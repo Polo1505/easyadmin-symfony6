@@ -18,15 +18,34 @@ class SecurityController extends AbstractController
         // last username entered by the user
         $lastUsername = $authenticationUtils->getLastUsername();
 
-        return $this->render('security/login.html.twig', [
+        return $this->render('/security/login.html.twig', [
             'last_username' => $lastUsername,
             'error' => $error,
+            'target_path' => $this->generateUrl('admin'),
+            'username_label' => 'Логин',
+            'password_label' => 'Пароль',
+            'sign_in_label' => 'Вход',
+            'csrf_token_intention' => 'authenticate'
         ]);
     }
 
     #[Route(path: '/logout', name: 'app_logout')]
-    public function logout(): void
+    public function logout(): RedirectResponse
     {
-        throw new \LogicException('This method can be blank - it will be intercepted by the logout key on your firewall.');
+        throw $this->redirectToLogin();
+    }
+    
+    private function redirectToLogin(): RedirectResponse
+    {
+        $url = $this->generateUrl('app_login');
+        $response = new RedirectResponse($url);
+
+        return $response;
+    }
+
+    protected function onAuthenticationFailure(Request $request, AuthenticationException $exception): Response
+    {
+        // Redirect to the login page when authentication fails
+        return $this->redirectToLogin();
     }
 }
