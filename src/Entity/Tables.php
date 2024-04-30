@@ -7,21 +7,34 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\GetCollection;
 use App\Repository\TablesRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use ApiPlatform\Core\Annotation\ApiSubresource;
+
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Metadata\ApiProperty;
+use ApiPlatform\Serializer\Filter\PropertyFilter;
 
 use App\Controller\Admin\GuestListCrudController;
 
 #[ORM\Entity(repositoryClass: TablesRepository::class)]
 #[ApiResource(
     operations: [
-        new GetCollection(name: "tables", uriTemplate: '/tables'),
+        new GetCollection(name: "tables", uriTemplate: '/tables',
+    ),
         new Get(name: "tablesById", uriTemplate: '/tables/{id}'),
         new Patch(name: "updateTablesById", uriTemplate: '/tables/{id}'),
-        new GetCollection(name: "tableGuests", uriTemplate: '/tables/{id}/guests', controller:GuestListCrudController::Class),
-        new GetCollection(name: "tablesStats", uriTemplate: '/tables_stats'),
+        new GetCollection(name: "tableGuests", uriTemplate: '/tables/{id}/guestLists',
+        ),
+        new GetCollection(name: "tablesStats", uriTemplate: '/tables_stats',
+    ),
     ]
-)]
+    )
+]
+#[ApiFilter(SearchFilter::class, properties: ['num' => 'exact'])]
 class Tables
 {
     #[ORM\Id]
@@ -39,16 +52,22 @@ class Tables
     private ?int $maxGuests = null;
 
     #[ORM\Column(nullable: true)]
-    private ?int $guestsDef = null;
+    private ?int $guestsDef = 0;
 
     #[ORM\Column(nullable: true)]
-    private ?int $guestsNow = null;
+    private ?int $guestsNow = 0;
 
-    #[ORM\Column(type: Types::ARRAY)]
-    private array $guests = [];
+    /**
+     * @var Collection<int, GuestList>
+     */
+    #[ORM\OneToMany(targetEntity: GuestList::class, mappedBy: 'tables')]
+    #[ApiSubresource]
+    private Collection $guestLists;
 
-    // #[ORM\OneToOne(mappedBy: 'tables', cascade: ['persist', 'remove'])]
-    // private ?GuestList $guestList = null;
+    public function __construct()
+    {
+        $this->guestLists = new ArrayCollection();
+    }
 
     public function getId(): ?int
     {
@@ -93,59 +112,56 @@ class Tables
 
     public function getGuestsDef(): ?int
     {
-        return $this->guestsDef;
+        return $this->getGuestLists()->count();
     }
 
-    public function setGuestsDef(?int $guestsDef): static
+    public function updateGuestsDef(): void
     {
-        $this->guestsDef = $guestsDef;
-
-        return $this;
+        $this->guestsDef = $this->getGuestLists()->count();
     }
 
     public function getGuestsNow(): ?int
     {
-        return $this->guestsNow;
+        return $this->getGuestLists()->filter(fn (GuestList $guestList) => $guestList->isPresent())->count();
     }
 
-    public function setGuestsNow(?int $guestsNow): static
+    public function updateGuestsNow(): void
     {
-        $this->guestsNow = $guestsNow;
+        $this->guestsNow = $this->getGuestLists()->filter(fn (GuestList $guestList) => $guestList->isPresent())->count();
+    }
+
+    /**
+     * @return Collection<int, GuestList>
+     */
+    public function getGuestLists(): Collection
+    {
+        return $this->guestLists;
+    }
+
+    public function addGuestList(GuestList $guestList): static
+    {
+        if (!$this->guestLists->contains($guestList)) {
+            $this->guestLists->add($guestList);
+            
+            $guestList->setTables($this);
+        }
 
         return $this;
     }
 
-    public function getGuests(): array
+    public function removeGuestList(GuestList $guestList): static
     {
-        return $this->guests;
-    }
-
-    public function setGuests(array $guests): static
-    {
-        $this->guests = $guests;
+        if ($this->guestLists->removeElement($guestList)) {
+            // set the owning side to null (unless already changed)
+            if ($guestList->getTables() === $this) {
+                $guestList->setTables(null);
+            }
+        }
 
         return $this;
     }
-
-    // public function getGuestList(): ?GuestList
-    // {
-    //     return $this->guestList;
-    // }
-
-    // public function setGuestList(?GuestList $guestList): static
-    // {
-    //     // unset the owning side of the relation if necessary
-    //     if ($guestList === null && $this->guestList !== null) {
-    //         $this->guestList->setTables(null);
-    //     }
-
-    //     // set the owning side of the relation if necessary
-    //     if ($guestList !== null && $guestList->getTables() !== $this) {
-    //         $guestList->setTables($this);
-    //     }
-
-    //     $this->guestList = $guestList;
-
-    //     return $this;
-    // }
+    
+    public function __toString(){
+        return "Table {$this->num}";
+    }
 }
